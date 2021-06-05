@@ -6,13 +6,15 @@
 #include <iostream>
 #include <vector>
 #include <utility>
-
+#include <tuple>
 #include <cmath>
 
 using std::cout;
 using std::lgamma;
 using std::vector;
 using std::pair;
+using std::tuple;
+using std::get;
 
 void pdp(vector<pair<double,size_t>> &v){
     for (const auto &c : v){
@@ -53,8 +55,12 @@ double hyper_geom_cdf( int x, int n, int m, int N){
 }
 
 
-enum class pvalue_correction{
-    BH,BY,
+enum class pvalue_corrector{
+    BENJAMINI_HOCHBERG,
+    BENJAMINI_YEKUTIELI,
+    BONFERRONI,
+    HOLM_BONFERRONI,
+    SIDAK,
 };
 
 class hypothesis_testing{
@@ -111,13 +117,72 @@ hypothesis_testing benjamini_yekutieli_fdr_correction(const vector<double> &pval
     hypothesis_testing test;
     return test;
 }
-hypothesis_testing correct_pvalues(const vector<double> &pvalues, double alpha, pvalue_correction method){
 
+
+hypothesis_testing fixed_alpha_correction(const vector<double> &pvalues, double alpha, pvalue_corrector method){
+    hypothesis_testing test;
     switch(method){
-        case pvalue_correction::BH:
+        case pvalue_corrector::BONFERRONI:
+            alpha = alpha / pvalues.size();
+            break;
+        case pvalue_corrector::SIDAK:
+            alpha = 1 - pow((1 - alpha),1.0/pvalues.size());
+            break;
+        default:
+            throw std::invalid_argument("Method not defined");
+    }
+    for( double p : pvalues){
+        test.corr_pvals.push_back(p);
+        test.null_rejected.push_back( p < alpha);       
+    }
+    return test;
+}
+hypothesis_testing holm_bonferroni_method(const vector<double> &pvalues, double alpha){
+    hypothesis_testing test;
+    
+    vector<tuple<double,size_t,bool>> paired_pvalues;
+    for(int i = 0; i < pvalues.size(); ++i){
+        paired_pvalues.push_back(std::make_tuple(pvalues[i],i,false));
+    }
+    
+    //Sort by the p-values
+    std::sort(paired_pvalues.begin(),paired_pvalues.end(),
+            [] (const tuple<double,int,bool> &a, const tuple<double,int,bool> &b)
+                { return get<0>(a) < get<0>(b);});
+ 
+    int cnt = 0;
+    size_t m = paired_pvalues.size();
+    for( auto &pr : paired_pvalues){
+        double alpha_prime = alpha / (m - cnt);
+        cnt+=1;
+        if (get<0>(pr) < alpha_prime){
+            get<2>(pr) = true;
+        }
+    }
+    //Sort p-values back to original order
+    std::sort(paired_pvalues.begin(),paired_pvalues.end(),
+            [] (const tuple<double,int,bool> &a, const tuple<double,int,bool> &b)
+                { return get<1>(a) < get<1>(b);});
+
+    for( auto &pr : paired_pvalues){
+        test.corr_pvals.push_back(get<0>(pr));
+        test.null_rejected.push_back(get<2>(pr));       
+    }
+    return test;
+}
+
+hypothesis_testing correct_pvalues(const vector<double> &pvalues, double alpha, pvalue_corrector method){
+    switch(method){
+        case pvalue_corrector::BENJAMINI_HOCHBERG:
             return benjamini_hochberg_fdr_correction(pvalues, alpha);
-        case pvalue_correction::BY:
+        case pvalue_corrector::BENJAMINI_YEKUTIELI:
+            throw std::invalid_argument("Correction Method Not implemented!");
             return benjamini_yekutieli_fdr_correction(pvalues, alpha);
+        case pvalue_corrector::BONFERRONI:
+        case pvalue_corrector::SIDAK:
+            return fixed_alpha_correction(pvalues, alpha, method);
+        case pvalue_corrector::HOLM_BONFERRONI:
+            return holm_bonferroni_method(pvalues, alpha);
         default:
             throw std::invalid_argument("Correction Method Not implemented!");
     }
@@ -125,12 +190,21 @@ hypothesis_testing correct_pvalues(const vector<double> &pvalues, double alpha, 
 
 int main(int argc, char **argv){
 
-    std::vector<double> pvals{{0.074,0.205,0.041,0.039,0.001,0.042,0.060,0.008,0.05,0.049,0.025}};
+    std::vector<double> pvals{{0.074,0.205,0.041,0.039,0.001,0.042,0.060,0.004,0.05,0.049,0.025}};
 
-    auto cp = correct_pvalues( pvals, 0.05, pvalue_correction::BH);
+    auto cp = correct_pvalues( pvals, 0.05, pvalue_corrector::BENJAMINI_HOCHBERG);
     pdp(pvals);
 
     pdp(cp.corr_pvals);
+
     pdp(cp.null_rejected);
+
+    cp = correct_pvalues( pvals, 0.05, pvalue_corrector::BONFERRONI);
+    pdp(cp.null_rejected);
+    cp = correct_pvalues( pvals, 0.05, pvalue_corrector::HOLM_BONFERRONI);
+    pdp(cp.null_rejected);
+    cp = correct_pvalues( pvals, 0.05, pvalue_corrector::SIDAK);
+    pdp(cp.null_rejected);
+    cp = correct_pvalues( pvals, 0.05, pvalue_corrector::BENJAMINI_YEKUTIELI);
     return 0;
 }
