@@ -18,16 +18,24 @@ using std::get;
 
 void pdp(vector<pair<double,size_t>> &v){
     for (const auto &c : v){
-        std::cout << c.first << ", " << c.second << "\n";
+        cout << c.first << ", " << c.second << "\n";
     }
-    std::cout << "\n";
+    cout << "\n";
 }
 template<typename D>
 void pdp(vector<D> &v){
     for (D c : v){
-        std::cout << c << " ";
+        cout << c << " ";
     }
-    std::cout << "\n";
+    cout << "\n";
+}
+
+double approx_digamma(double n){
+    return std::log(n) - 1.0 / (2 * n);
+}
+
+double approx_harmonic(int n){
+    return approx_digamma(n + 1) + 0.5772156649;
 }
 
 double lbinom( int n, int k){
@@ -38,7 +46,7 @@ double lbinom( int n, int k){
 }
 
 double lhyper_geom_pmf( int x, int n, int m, int N){
-    return lbinom( n, x) + lbinom(N-n, m-x) - lbinom( N, m );
+    return lbinom(n, x) + lbinom(N-n, m-x) - lbinom(N, m);
 }
 
 double hyper_geom_pmf( int x, int n, int m, int N){
@@ -46,6 +54,7 @@ double hyper_geom_pmf( int x, int n, int m, int N){
 }
 
 //Upper
+//Computes upper tail of fisher_exact test
 double hyper_geom_cdf( int x, int n, int m, int N){
     double cdf = 0;
     for( int i = x; i <= n; ++i){
@@ -53,7 +62,6 @@ double hyper_geom_cdf( int x, int n, int m, int N){
     }
     return cdf;
 }
-
 
 enum class pvalue_corrector{
     BENJAMINI_HOCHBERG,
@@ -72,7 +80,7 @@ class hypothesis_testing{
 // Used statsmodel as a reference
 // https://github.com/statsmodels/statsmodels/blob/main/statsmodels/stats/multitest.py
 //
-hypothesis_testing benjamini_hochberg_fdr_correction(const vector<double> &pvalues, double alpha){
+hypothesis_testing fdr_correction(const vector<double> &pvalues, double alpha, pvalue_corrector method){
 
     hypothesis_testing test;
     vector<pair<double,size_t>> paired_pvalues;
@@ -87,17 +95,21 @@ hypothesis_testing benjamini_hochberg_fdr_correction(const vector<double> &pvalu
   
     int k;
 
-    double min_p = 1;//paired_pvalues[0].first / ecdf_vector[0];
 
+    double new_p = 1;
+    double m = paired_pvalues.size();
     for ( k = 0; k < paired_pvalues.size(); ++k){
-        double q = alpha * (k+1) /  paired_pvalues.size();
-        //if(q > paired_pvalues[k].first){
-        double new_p =  paired_pvalues[k].first / (k+1) * paired_pvalues.size();
-        if ( new_p < min_p){
-            min_p = new_p;
+//        double q = alpha * (k+1) /  paired_pvalues.size();
+        double p = paired_pvalues[k].first;
+        switch(method){
+            case pvalue_corrector::BENJAMINI_HOCHBERG:
+                p = p * m / (1.0 * k+1);
+                break;
+            case pvalue_corrector::BENJAMINI_YEKUTIELI:
+                p = p * approx_harmonic(k+1) * m / (1.0 * k+1);
+                break;
         }
-        paired_pvalues[k].first = min_p;
-
+        paired_pvalues[k].first = p;
     }
     //Sort p-values back to original order
     std::sort(paired_pvalues.begin(),paired_pvalues.end(),
@@ -110,11 +122,6 @@ hypothesis_testing benjamini_hochberg_fdr_correction(const vector<double> &pvalu
         test.null_rejected.push_back( pr.first < alpha);
     }
 
-    return test;
-}
-
-hypothesis_testing benjamini_yekutieli_fdr_correction(const vector<double> &pvalues, double alpha){
-    hypothesis_testing test;
     return test;
 }
 
@@ -171,13 +178,11 @@ hypothesis_testing holm_bonferroni_method(const vector<double> &pvalues, double 
     return test;
 }
 
-hypothesis_testing correct_pvalues(const vector<double> &pvalues, double alpha, pvalue_corrector method){
+hypothesis_testing multiple_test(const vector<double> &pvalues, double alpha, pvalue_corrector method){
     switch(method){
         case pvalue_corrector::BENJAMINI_HOCHBERG:
-            return benjamini_hochberg_fdr_correction(pvalues, alpha);
         case pvalue_corrector::BENJAMINI_YEKUTIELI:
-            throw std::invalid_argument("Correction Method Not implemented!");
-            return benjamini_yekutieli_fdr_correction(pvalues, alpha);
+            return fdr_correction(pvalues, alpha, method);
         case pvalue_corrector::BONFERRONI:
         case pvalue_corrector::SIDAK:
             return fixed_alpha_correction(pvalues, alpha, method);
@@ -192,19 +197,17 @@ int main(int argc, char **argv){
 
     std::vector<double> pvals{{0.074,0.205,0.041,0.039,0.001,0.042,0.060,0.004,0.05,0.049,0.025}};
 
-    auto cp = correct_pvalues( pvals, 0.05, pvalue_corrector::BENJAMINI_HOCHBERG);
+
     pdp(pvals);
-
+    auto cp = multiple_test( pvals, 0.05, pvalue_corrector::BENJAMINI_HOCHBERG);
     pdp(cp.corr_pvals);
-
     pdp(cp.null_rejected);
-
-    cp = correct_pvalues( pvals, 0.05, pvalue_corrector::BONFERRONI);
+    cp = multiple_test( pvals, 0.05, pvalue_corrector::BENJAMINI_YEKUTIELI);
+    pdp(cp.corr_pvals);
     pdp(cp.null_rejected);
-    cp = correct_pvalues( pvals, 0.05, pvalue_corrector::HOLM_BONFERRONI);
-    pdp(cp.null_rejected);
-    cp = correct_pvalues( pvals, 0.05, pvalue_corrector::SIDAK);
-    pdp(cp.null_rejected);
-    cp = correct_pvalues( pvals, 0.05, pvalue_corrector::BENJAMINI_YEKUTIELI);
+    cout << hyper_geom_cdf( 30, 50, 60, 100 ) << "|\n";
+    //for(int i = 1; i< 50; ++i){
+    //    cout << "H_i" << i << " = " <<approx_harmonic(i) << "\n";
+    //}
     return 0;
 }
