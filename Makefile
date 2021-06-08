@@ -1,5 +1,5 @@
 LDFLAGS += -lm -std=c++17
-CXXFLAGS += -O2
+CXXFLAGS += -O2 -Wall -Wextra -Werror
 
 all: stattest
 

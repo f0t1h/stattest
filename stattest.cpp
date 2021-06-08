@@ -85,7 +85,7 @@ hypothesis_testing fdr_correction(const vector<double> &pvalues, double alpha, p
 
     hypothesis_testing test;
     vector<pair<double,size_t>> paired_pvalues;
-    for(int i = 0; i < pvalues.size(); ++i){
+    for(size_t i = 0; i < pvalues.size(); ++i){
         paired_pvalues.push_back(std::make_pair(pvalues[i],i));
     }
     
@@ -94,13 +94,8 @@ hypothesis_testing fdr_correction(const vector<double> &pvalues, double alpha, p
             [] (const pair<double,int> &a, const pair<double,int> &b)
                 { return a.first > b.first;});
   
-    int k;
-
-
-    double new_p = 1;
     double m = paired_pvalues.size();
-    for ( k = 0; k < paired_pvalues.size(); ++k){
-//        double q = alpha * (k+1) /  paired_pvalues.size();
+    for ( size_t k = 0; k < paired_pvalues.size(); ++k){
         double p = paired_pvalues[k].first;
         switch(method){
             case pvalue_corrector::BENJAMINI_HOCHBERG:
@@ -109,6 +104,8 @@ hypothesis_testing fdr_correction(const vector<double> &pvalues, double alpha, p
             case pvalue_corrector::BENJAMINI_YEKUTIELI:
                 p = p * approx_harmonic(k+1) * m / (1.0 * k+1);
                 break;
+            default:
+                throw std::invalid_argument("Method not implemented for this function");
         }
         paired_pvalues[k].first = p;
     }
@@ -138,7 +135,7 @@ hypothesis_testing fixed_alpha_correction(const vector<double> &pvalues, double 
             corrected_alpha = 1 - pow((1 - alpha),1.0/pvalues.size());
             break;
         default:
-            throw std::invalid_argument("Method not defined");
+            throw std::invalid_argument("Method not implemented for this function");
     }
 
     for( double p : pvalues){
@@ -150,10 +147,9 @@ hypothesis_testing fixed_alpha_correction(const vector<double> &pvalues, double 
                 break;
             case pvalue_corrector::SIDAK:
                 p = 1 - pow((1.0 - p),pvalues.size());
-                alpha = 1 - pow((1 - alpha),1.0/pvalues.size());
                 break;
             default:
-                throw std::invalid_argument("Method not defined");
+                throw std::invalid_argument("Method not implemented for this function");
         }
 
         test.corr_pvals.push_back(corrected_p);
@@ -165,7 +161,7 @@ hypothesis_testing holm_bonferroni_method(const vector<double> &pvalues, double 
     hypothesis_testing test;
     
     vector<tuple<double,size_t,bool>> paired_pvalues;
-    for(int i = 0; i < pvalues.size(); ++i){
+    for( size_t i = 0; i < pvalues.size(); ++i){
         paired_pvalues.push_back(std::make_tuple(pvalues[i],i,false));
     }
     
@@ -211,7 +207,7 @@ hypothesis_testing multiple_test(const vector<double> &pvalues, double alpha, pv
 }
 
 int main(int argc, char **argv){
-
+    cout << argc << "\t" << argv[0] << "\n";
     std::vector<double> pvals{{0.074,0.205,0.041,0.039,0.001,0.042,0.060,0.004,0.05,0.049,0.025}};
 
 
