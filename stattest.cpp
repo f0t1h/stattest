@@ -34,6 +34,7 @@ double approx_digamma(double n){
     return std::log(n) - 1.0 / (2 * n);
 }
 
+// I can convert this to a look-up table instead.
 double approx_harmonic(int n){
     return approx_digamma(n + 1) + 0.5772156649;
 }
@@ -128,19 +129,35 @@ hypothesis_testing fdr_correction(const vector<double> &pvalues, double alpha, p
 
 hypothesis_testing fixed_alpha_correction(const vector<double> &pvalues, double alpha, pvalue_corrector method){
     hypothesis_testing test;
+    double corrected_alpha = alpha;
     switch(method){
         case pvalue_corrector::BONFERRONI:
-            alpha = alpha / pvalues.size();
+            corrected_alpha = alpha / pvalues.size();
             break;
         case pvalue_corrector::SIDAK:
-            alpha = 1 - pow((1 - alpha),1.0/pvalues.size());
+            corrected_alpha = 1 - pow((1 - alpha),1.0/pvalues.size());
             break;
         default:
             throw std::invalid_argument("Method not defined");
     }
+
     for( double p : pvalues){
-        test.corr_pvals.push_back(p);
-        test.null_rejected.push_back( p < alpha);       
+        double corrected_p = p;
+
+        switch(method){
+            case pvalue_corrector::BONFERRONI:
+                p = p * pvalues.size();
+                break;
+            case pvalue_corrector::SIDAK:
+                p = 1 - pow((1.0 - p),pvalues.size());
+                alpha = 1 - pow((1 - alpha),1.0/pvalues.size());
+                break;
+            default:
+                throw std::invalid_argument("Method not defined");
+        }
+
+        test.corr_pvals.push_back(corrected_p);
+        test.null_rejected.push_back( p < corrected_alpha);       
     }
     return test;
 }
